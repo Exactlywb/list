@@ -1,76 +1,32 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <cmath>
-#include <assert.h>
-
-typedef double Element;
-const Element poison = NAN;
-
-struct Node {
-
-    int next   = -1;
-    int prev   = -1;
-    Element value = poison;
-
-};
-
-struct List {
-
-    int head         = 0;
-    int head_free_el = 0;
-    size_t size      = 0;
-    size_t capacity  = 0;
-    Node* data       = nullptr;
-    int tail         = 0;
-
-};
-
-enum ErrType {
-
-#define DEF_ERR(name, code_list_ok, code_any_place) name,
-
-#include "ErrList.txt"
-
-#undef DEF_ERR
-
-};
-
-#define ASSERT_OK ErrType my_errno = ListOk (mainList); \
-                  if ( my_errno ) \
-                        exit ( my_errno );
-
-List    ListConstruct    (List** mainList, size_t size);
-void    ListDestruct     (List* mainList);
-void    ListDump         (List  mainList);
-int     PushHead         (List* mainList, Element value);
-int     PushTail         (List* mainList, Element value);
-int     PopHead          (List* mainList);
-int     PopTail          (List* mainList);
-int     ListInsert       (List* mainList,  size_t position, Element value);
-void    DeleteElem       (List* mainList,  size_t position);
-void    LogicSort        (List** mainList, size_t listSize);
-int     FindValuePos     (List mainList, Element value);
-Element GetValueElem     (List mainList, size_t position);
-void    PushIntoFreeList (List* mainList, size_t position);
-ErrType ListOk           (List* mainList);
+#include "list.h"
 
 int main () {
 
-    List *mainList = nullptr;
+    List mainList = {};
 
     size_t list_size = 10;
 
     ListConstruct (&mainList, list_size);
 
-    PushTail (mainList, 20);
-    PushHead (mainList, 112);
+    PushTail (&mainList, 20);
+    PushHead (&mainList, 112);
 
-    ListInsert (mainList, 2, 40);
+    ListInsert (&mainList, 2, 40);
+    PushHead (&mainList, 30);
 
     LogicSort (&mainList, list_size);
 
-    ListDump      (*mainList);
-    ListDestruct  (mainList);
+    PopTail (&mainList);
+    PushHead (&mainList, 12.5);
+
+    PushHead (&mainList, 25);
+    PushHead (&mainList, 33.4);
+
+    LogicSort (&mainList, list_size);
+
+    ListDump (&mainList);
+
+    ListDestruct (&mainList);
 
     return 0;
 
@@ -254,21 +210,19 @@ void ListFillPoison (Node* data, size_t size) {
 
 }
 
-List ListConstruct (List** mainList, size_t size) {
+List ListConstruct (List* mainList, size_t size) {
 
-    *mainList = (List*)calloc(1, sizeof(Node));
+    mainList->size = size;
+    mainList->capacity = 0;
+    mainList->head = mainList->tail = 0;
 
-    (*mainList)->size = size;
-    (*mainList)->capacity = 0;
-    (*mainList)->head = (*mainList)->tail = 0;
+    mainList->data = (Node*)calloc(size, sizeof(Node));
 
-    (*mainList)->data = (Node*)calloc(size, sizeof(Node));
+    ListFillPoison (mainList->data, size);
 
-    ListFillPoison ((*mainList)->data, size);
+    mainList->head_free_el = 1;
 
-    (*mainList)->head_free_el = 1;
-
-    return **mainList;
+    return *mainList;
 
 }
 
@@ -287,48 +241,63 @@ void ListDestruct (List* mainList) {
 
 }
 
-void MakeListGraph (List mainList) {
+void MakeListGraph (List* mainList) {
 
-    FILE *graph = fopen ("graph.dot", "w");
+    if (!mainList)
+        printf ("there is no List.");
 
-    fprintf (graph, "digraph List {\n"
-                    "node [shape=\"box\"]\n");
+    FILE* graph = fopen ("graph.dot", "w");
+    fprintf (graph, "digraph LIST{\n");
+    fprintf (graph, "\t" "rankdir = TB;\n");
 
-    /*for (;; i = mainList.data[i].next) {
+    for (int i = 0; i <= mainList->capacity; i++)
+    {
+        fprintf (graph, "%d [shape=record,",i);
+        fprintf (graph,"label=\" value = %lg | { <prev> prev = %d | <current> current = %d | <next> next = %d } \"];\n",mainList->data[i].value, mainList->data[i].prev, i, mainList->data[i].next);
+    }
 
-        if ( i == -1 ) break;
+    fprintf (graph, "\n");
 
-        fprintf (graph, "\"box%zu\" [shape = \"record\", label = \"{%zu|%lg|{%d|%d}}\"]", i, i, mainList.data[i].value, mainList.data[i].prev, mainList.data[i].next);
+    fprintf (graph, "edge[color = \"white\", weight = 0, dir = \"both\"];\n");
 
-        if ( mainList.data[i].prev != -1 ) {
+    fprintf (graph, "{rank = \"same\"\n");
 
-           fprintf (graph, "\"box%zu\" -> \"box%zu\";", mainList.data[i].prev, i);
+    for (int i = 0; i <= mainList->capacity; i++)
+        fprintf (graph, "%d\n", i);
 
+    fprintf (graph, "0");
+    for (int i = 0; i <= mainList->capacity; i++)
+        fprintf (graph, " -> %d", i);
+
+    fprintf (graph, ";\n}\n");
+
+    fprintf (graph, "edge[color = \"red\", weight = 0, dir = \"both\"];\n");
+    fprintf (graph, " %d -> 0;", mainList->tail);
+
+    for (int i = 0; i <= mainList->capacity; i++)
+    {
+        if (mainList->data[i].prev != -1)
+        {
+            fprintf (graph, "edge[color = \"red\", weight = 10000, dir = \"both\"];\n");
+            fprintf (graph,"\t" "%d -> %d;\n", i, mainList->data[i].prev);
         }
 
-    }*/
-
-    for (size_t i = 0; i < mainList.size; i++) {
-
-        fprintf (graph, "\"box%zu\" [shape = \"record\", label = \"{%zu|%lg|{%d|%d}}\"]", i, i, mainList.data[i].value, mainList.data[i].prev, mainList.data[i].next);
-
-        if ( mainList.data[i].prev != 0 ) {
-
-            fprintf (graph, "\"box%zu\" -> \"box%zu\";", mainList.data[i].prev, i);
-
+        else if (mainList->data[i].next != -1)
+        {
+            fprintf (graph, "edge[color = \"red\", weight = 10000, dir = \"one\"];\n");
+            fprintf (graph,"\t" "%d -> %d;\n", i, mainList->data[i].next);
         }
 
     }
 
-    fprintf (graph, "}\n");
+    fprintf (graph,"}\n");
 
     fclose (graph);
-
     system ("dot -Tpng graph.dot -o graph.png");
 
 }
 
-void ListDump (List mainList) {
+void ListDump (List* mainList) {
     //вынести в один fprintf
     FILE* html_output = fopen ("dump.html", "w");
 
@@ -350,37 +319,50 @@ void ListDump (List mainList) {
                           "<li>Head index = %d</li>"
                           "<li>Tail index = %d</li>"
                           "<li>Head index of free element's list = %d</li>"
-                          "</ul>", mainList.head, mainList.tail, mainList.head_free_el);
+                          "</ul>", mainList->head, mainList->tail, mainList->head_free_el);
 
-    fprintf (html_output, "<span> List size = %zu </span> <br>\n <span> List capacity = %zu </span><br>\n", mainList.size, mainList.capacity);
+    fprintf (html_output, "<span> List size = %zu </span> <br>\n <span> List capacity = %zu </span><br>\n", mainList->size, mainList->capacity);
 
     fprintf (html_output, "<img src = \"graph.png\">");
+
+    fprintf (html_output, "<a href = \"graph.png\" download>Download graphic dump</a>");
 
     fprintf (html_output, "</div>\n"
                           "</body>\n"
                           "</html>");
 
-
     fclose (html_output);
+
+    system ("dump.html");
 
 }
 
-void LogicSort (List** mainList, size_t listSize) {
+void LogicSort (List* mainList, size_t listSize) {
 
-    List* tempList = nullptr;
+    List tempList = {};
     ListConstruct (&tempList, listSize);
 
-    for (size_t i = (*mainList)->head; i != 0; i = (*mainList)->data[i].next) {
+    for (size_t i = mainList->head; i != 0; i = mainList->data[i].next) {
 
-        PushTail (tempList, (*mainList)->data[i].value);
+        PushTail (&tempList, mainList->data[i].value);
 
     }
 
-    List* oldListPointer = *mainList;
+    ListDestruct (mainList);
 
-    *mainList = tempList;
+    ListConstruct (mainList, listSize);
 
-    ListDestruct (oldListPointer);
+    for (size_t i = tempList.head; i != 0; i = tempList.data[i].next) {
+
+        PushTail (mainList, tempList.data[i].value);
+
+    }
+
+}
+
+Node GetNode (List mainList, size_t position) {
+
+    return mainList.data[position];
 
 }
 
@@ -413,6 +395,8 @@ void PushIntoFreeList (List* mainList, size_t position) {
     if (mainList->head_free_el != 0) //if there is a head
         mainList->data[mainList->head_free_el].prev = position;
 
+
+    mainList->data[position].next = mainList->head_free_el;
     mainList->head_free_el = position;
 
 }
